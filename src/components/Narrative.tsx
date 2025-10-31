@@ -93,12 +93,17 @@ const sections = [
 
 export default function Narrative() {
   const containerRef = useRef<HTMLDivElement>(null);
+  // --- CHANGE 1: Remove setGlobalScale ---
   const { setCameraTarget, setLinkSpeed, setEmissiveIntensity } = useSceneStore();
   
   useEffect(() => {
     if (!containerRef.current) return;
     
     const ctx = gsap.context(() => {
+      // --- CHANGE 2: Remove the entire "Vigorous expansion" gsap.timeline ---
+      // (It conflicts with the Hero.tsx logic)
+
+      // Triggers for each section's camera
       sections.forEach((section, index) => {
         const element = document.getElementById(section.id);
         if (!element) return;
@@ -151,6 +156,7 @@ export default function Narrative() {
     }, containerRef);
     
     return () => ctx.revert();
+  // --- CHANGE 3: Remove setGlobalScale from dependencies ---
   }, [setCameraTarget, setLinkSpeed, setEmissiveIntensity]);
   
   return (
