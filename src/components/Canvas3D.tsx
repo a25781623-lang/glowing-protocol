@@ -142,14 +142,27 @@ function ConnectionLines({ nodeCount = 80 }: { nodeCount?: number }) {
   );
 }
 
-function Scene() {
+function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
   const { camera } = useThree();
   const { cameraTarget, reducedMotion } = useSceneStore();
   const targetRef = useRef(new THREE.Vector3(...cameraTarget));
+  const mouseRef = useRef({ x: 0, y: 0 });
   
   useEffect(() => {
     targetRef.current.set(...cameraTarget);
   }, [cameraTarget]);
+  
+  useEffect(() => {
+    if (!mouseTracking) return;
+    
+    const handleMouseMove = (event: MouseEvent) => {
+      mouseRef.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouseRef.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [mouseTracking]);
   
   useFrame((state) => {
     if (reducedMotion) return;
@@ -162,8 +175,11 @@ function Scene() {
     
     camera.lookAt(currentTarget);
     
-    // Subtle auto-rotation when idle
-    if (!cameraTarget.some(v => v !== 0)) {
+    // Mouse parallax or auto-rotation
+    if (mouseTracking && !cameraTarget.some(v => v !== 0)) {
+      camera.position.x = 0 + mouseRef.current.x * 2;
+      camera.position.y = 0 + mouseRef.current.y * 2;
+    } else if (!cameraTarget.some(v => v !== 0)) {
       camera.position.x = Math.sin(state.clock.getElapsedTime() * 0.1) * 0.5;
       camera.position.y = Math.cos(state.clock.getElapsedTime() * 0.15) * 0.3;
     }
@@ -204,7 +220,7 @@ function Scene() {
   );
 }
 
-export default function Canvas3D() {
+export default function Canvas3D({ mouseTracking = false }: { mouseTracking?: boolean }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -232,7 +248,7 @@ export default function Canvas3D() {
         }}
         dpr={[1, Math.min(window.devicePixelRatio, 2)]}
       >
-        <Scene />
+        <Scene mouseTracking={mouseTracking} />
       </Canvas>
     </div>
   );

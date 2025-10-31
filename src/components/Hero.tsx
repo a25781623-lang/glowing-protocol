@@ -7,12 +7,12 @@ const Canvas3D = lazy(() => import('./Canvas3D'));
 export default function Hero() {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* WebGL Background */}
+      {/* WebGL Background with mouse tracking */}
       <div className="absolute inset-0 z-0">
         <Suspense fallback={
           <div className="absolute inset-0 bg-gradient-to-b from-primary/20 via-background to-background" />
         }>
-          <Canvas3D />
+          <Canvas3D mouseTracking={true} />
         </Suspense>
       </div>
       
