@@ -1,47 +1,52 @@
 import { lazy, Suspense } from 'react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useSceneStore } from '@/lib/store'; // Import the store
+import { useSceneStore } from '@/lib/store';
 
 const Canvas3D = lazy(() => import('./Canvas3D'));
 
 export default function Hero() {
-  // Get the setter function from the store
   const setMeshScale = useSceneStore((state) => state.setMeshScale);
 
-  // Handlers for click expansion (Netflix logo effect)
+  // Handlers for click expansion
   const handleButtonPress = () => {
     setMeshScale(1.2); // Expand
   };
   const handleButtonRelease = () => {
-    setMeshScale(1.0); // Return to normal
+    // On release, return to the contracted state (since we're still hovering)
+    setMeshScale(0.9);
   };
 
-  // Handlers for hover contraction
-  const handleCanvasEnter = () => {
+  // Handlers for hover contraction on the whole section
+  const handleSectionEnter = () => {
     setMeshScale(0.9); // Contract
   };
-  const handleCanvasLeave = () => {
+  const handleSectionLeave = () => {
     setMeshScale(1.0); // Return to normal
+  };
+  
+  // Handlers for button hover to override the section hover
+  const handleButtonEnter = () => {
+    setMeshScale(1.2); // Expand
+  };
+  const handleButtonLeave = () => {
+    setMeshScale(0.9); // Return to contracted state
   };
 
   return (
     <section
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
-      // --- CHANGE 1: Move hover handlers here ---
-      onPointerEnter={handleCanvasEnter}
-      onPointerLeave={handleCanvasLeave}
+      onPointerEnter={handleSectionEnter}
+      onPointerLeave={handleSectionLeave}
     >
-      {/* WebGL Background with mouse tracking */}
+      {/* WebGL Background */}
       <div
         className="absolute inset-0 z-0"
-        // --- CHANGE 1: Remove handlers from here ---
-        // onPointerEnter={handleCanvasEnter}
-        // onPointerLeave={handleCanvasLeave}
       >
         <Suspense
           fallback={
-            <div className="absolute inset-0 bg-gradient-to-b from-primary/20 via-background to-background" />
+            // --- CHANGE: Set fallback to the dark background color ---
+            <div className="absolute inset-0 bg-background" />
           }
         >
           <Canvas3D mouseTracking={true} />
@@ -54,7 +59,9 @@ export default function Hero() {
       </div>
 
       {/* Content */}
-      <div className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div
+        className="relative z-20 container mx-auto px-4 sm:px-6 lg:px-8 text-center pointer-events-none"
+      >
         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium backdrop-blur-sm animate-scale-in">
             <Sparkles className="w-4 h-4" />
@@ -77,9 +84,11 @@ export default function Hero() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
             <Button
               size="lg"
-              className="group bg-primary hover:bg-primary/90 text-primary-foreground glow-primary transition-all hover:scale-105"
+              className="group bg-primary hover:bg-primary/90 text-primary-foreground glow-primary transition-all hover:scale-105 pointer-events-auto"
               onPointerDown={handleButtonPress}
               onPointerUp={handleButtonRelease}
+              onPointerEnter={handleButtonEnter}
+              onPointerLeave={handleButtonLeave}
             >
               Get Started
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -88,10 +97,11 @@ export default function Hero() {
             <Button
               size="lg"
               variant="outline"
-              className="border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all"
-              // --- CHANGE 2: Add handlers here ---
+              className="border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all pointer-events-auto"
               onPointerDown={handleButtonPress}
               onPointerUp={handleButtonRelease}
+              onPointerEnter={handleButtonEnter}
+              onPointerLeave={handleButtonLeave}
             >
               View Documentation
             </Button>
@@ -133,7 +143,7 @@ export default function Hero() {
       </div>
 
       {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-float">
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-float pointer-events-none">
         <div className="w-6 h-10 border-2 border-primary/30 rounded-full p-1">
           <div className="w-1 h-3 bg-primary rounded-full mx-auto animate-glow-pulse" />
         </div>
