@@ -226,24 +226,26 @@ export default function Narrative() {
                       </div>
                     </div>
                     
-                    {/* Right side - Stats */}
-                    <div className="flex-shrink-0 lg:w-64 space-y-4">
+                    {/* Right side - Stats (Horizontal on mobile/tablet, vertical on large screens) */}
+                    <div className="w-full lg:flex-shrink-0 lg:w-64">
                       <div className="text-sm font-semibold text-primary/80 uppercase tracking-wider mb-4">
                         Key Metrics
                       </div>
-                      {section.stats.map((stat, i) => (
-                        <div
-                          key={i}
-                          className="p-4 rounded-xl bg-gradient-to-br from-background/80 to-background/40 border border-primary/20 backdrop-blur-sm hover:border-primary/40 transition-all duration-300 group/stat"
-                        >
-                          <div className="text-3xl font-bold text-primary mb-1 group-hover/stat:scale-110 transition-transform inline-block">
-                            {stat.value}
+                      <div className="flex lg:flex-col gap-3">
+                        {section.stats.map((stat, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 p-4 rounded-xl bg-gradient-to-br from-background/80 to-background/40 border border-primary/20 backdrop-blur-sm hover:border-primary/40 transition-all duration-300 group/stat"
+                          >
+                            <div className="text-2xl sm:text-3xl font-bold text-primary mb-1 group-hover/stat:scale-110 transition-transform inline-block">
+                              {stat.value}
+                            </div>
+                            <div className="text-xs sm:text-sm text-muted-foreground">
+                              {stat.label}
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {stat.label}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

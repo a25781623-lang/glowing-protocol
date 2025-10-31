@@ -167,21 +167,26 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
   useFrame((state) => {
     if (reducedMotion) return;
     
-    // Smooth camera target lerp
-    const currentTarget = new THREE.Vector3();
-    camera.getWorldDirection(currentTarget);
-    currentTarget.multiplyScalar(10).add(camera.position);
-    currentTarget.lerp(targetRef.current, 0.05);
-    
-    camera.lookAt(currentTarget);
-    
-    // Mouse parallax or auto-rotation
+    // Mouse parallax - much more visible
     if (mouseTracking && !cameraTarget.some(v => v !== 0)) {
-      camera.position.x = 0 + mouseRef.current.x * 2;
-      camera.position.y = 0 + mouseRef.current.y * 2;
-    } else if (!cameraTarget.some(v => v !== 0)) {
-      camera.position.x = Math.sin(state.clock.getElapsedTime() * 0.1) * 0.5;
-      camera.position.y = Math.cos(state.clock.getElapsedTime() * 0.15) * 0.3;
+      // Lerp camera position smoothly to mouse position
+      camera.position.x += (mouseRef.current.x * 4 - camera.position.x) * 0.05;
+      camera.position.y += (mouseRef.current.y * 4 - camera.position.y) * 0.05;
+      camera.lookAt(0, 0, 0);
+    } else {
+      // Smooth camera target lerp for scroll sections
+      const currentTarget = new THREE.Vector3();
+      camera.getWorldDirection(currentTarget);
+      currentTarget.multiplyScalar(10).add(camera.position);
+      currentTarget.lerp(targetRef.current, 0.05);
+      
+      camera.lookAt(currentTarget);
+      
+      // Subtle auto-rotation when not in mouse tracking mode
+      if (!cameraTarget.some(v => v !== 0)) {
+        camera.position.x = Math.sin(state.clock.getElapsedTime() * 0.1) * 0.5;
+        camera.position.y = Math.cos(state.clock.getElapsedTime() * 0.15) * 0.3;
+      }
     }
   });
   
