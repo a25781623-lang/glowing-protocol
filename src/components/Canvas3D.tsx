@@ -5,15 +5,15 @@ import * as THREE from 'three';
 import { useSceneStore } from '@/lib/store';
 
 // --- Constants ---
-// --- CHANGE 1: Define our new mesh shape ---
-const OUTER_NODES = 10;
-const INNER_NODES = 5;
-const OUTER_RADIUS = 11;
-const INNER_RADIUS = 5;
-const Z_JITTER = 1.5; // How much 3D depth to add
+const NODE_COUNT = 80; 
 
-const NODE_COUNT = OUTER_NODES + INNER_NODES;
-const MOUSE_TRACKING_STRENGTH = 4;
+// --- CHANGE 1: Make the bounding box wider (X) than it is tall (Y) or deep (Z) ---
+const BOUNDING_BOX_X = 22; // Was 15. This makes it much wider.
+const BOUNDING_BOX_Y = 15; // Stays the same.
+const BOUNDING_BOX_Z = 8;  // Stays the same.
+
+const CONNECTION_DISTANCE_THRESHOLD = 5; 
+const MOUSE_ROTATION_STRENGTH = 1.0; 
 const LERP_FACTOR = 0.05;
 
 // --- Node Generation (Memoized) ---
@@ -22,77 +22,41 @@ const useBlockchainData = () => {
     const positions: THREE.Vector3[] = [];
     const connections: [number, number][] = [];
     const basePositions = new Float32Array(NODE_COUNT * 3);
-    const nodeIndices: { outer: number[]; inner: number[] } = {
-      outer: [],
-      inner: [],
-    };
 
-    let i = 0;
-
-    // 1. Generate Outer Ring
-    for (let j = 0; j < OUTER_NODES; j++) {
-      const theta = (j / OUTER_NODES) * Math.PI * 2;
-      const x = OUTER_RADIUS * Math.cos(theta);
-      const y = OUTER_RADIUS * Math.sin(theta);
-      const z = (Math.random() - 0.5) * Z_JITTER;
+    // --- CHANGE 2: Use the new X, Y, Z constants for generation ---
+    for (let i = 0; i < NODE_COUNT; i++) {
+      const x = (Math.random() - 0.5) * BOUNDING_BOX_X;
+      const y = (Math.random() - 0.5) * BOUNDING_BOX_Y;
+      const z = (Math.random() - 0.5) * BOUNDING_BOX_Z;
       const vec = new THREE.Vector3(x, y, z);
       positions.push(vec);
       vec.toArray(basePositions, i * 3);
-      nodeIndices.outer.push(i);
-      i++;
     }
 
-    // 2. Generate Inner Ring
-    const innerAngleOffset = Math.PI / INNER_NODES; // Stagger the inner ring
-    for (let j = 0; j < INNER_NODES; j++) {
-      const theta = (j / INNER_NODES) * Math.PI * 2 + innerAngleOffset;
-      const x = INNER_RADIUS * Math.cos(theta);
-      const y = INNER_RADIUS * Math.sin(theta);
-      const z = (Math.random() - 0.5) * Z_JITTER;
-      const vec = new THREE.Vector3(x, y, z);
-      positions.push(vec);
-      vec.toArray(basePositions, i * 3);
-      nodeIndices.inner.push(i);
-      i++;
+    // 2. Generate connections based on distance
+    for (let i = 0; i < NODE_COUNT; i++) {
+      for (let j = i + 1; j < NODE_COUNT; j++) {
+        const posA = positions[i];
+        const posB = positions[j];
+        const dist = posA.distanceTo(posB);
+
+        if (dist < CONNECTION_DISTANCE_THRESHOLD) {
+          connections.push([i, j]);
+        }
+      }
     }
 
-    // 3. Generate Connections
-    // Connect outer ring
-    for (let j = 0; j < nodeIndices.outer.length; j++) {
-      connections.push([
-        nodeIndices.outer[j],
-        nodeIndices.outer[(j + 1) % nodeIndices.outer.length],
-      ]);
-    }
-    // Connect inner ring
-    for (let j = 0; j < nodeIndices.inner.length; j++) {
-      connections.push([
-        nodeIndices.inner[j],
-        nodeIndices.inner[(j + 1) % nodeIndices.inner.length],
-      ]);
-    }
-    // Connect outer to inner
-    // This connects each outer node to the 2 nearest inner nodes
-    nodeIndices.outer.forEach((outerIndex) => {
-      const outerPos = positions[outerIndex];
-      const sortedInner = nodeIndices.inner
-        .map((innerIndex) => ({
-          index: innerIndex,
-          dist: positions[innerIndex].distanceTo(outerPos),
-        }))
-        .sort((a, b) => a.dist - b.dist);
-
-      connections.push([outerIndex, sortedInner[0].index]);
-      connections.push([outerIndex, sortedInner[1].index]);
-    });
-
-    // 4. Prepare BufferGeometry for LineSegments
+    // 3. Prepare BufferGeometry for LineSegments
     const lineGeometry = new THREE.BufferGeometry();
     const linePositions = new Float32Array(connections.length * 2 * 3);
 
     connections.forEach(([start, end], i) => {
-      positions[start].toArray(linePositions, i * 6);
-      positions[end].toArray(linePositions, i * 6 + 3);
+      basePositions.subarray(start * 3, start * 3 + 3).forEach((v, j) => {
+        linePositions[i * 6 + j] = v;
+      });
+      basePositions.subarray(end * 3, end * 3 + 3).forEach((v, j) => {
+        linePositions[i * 6 + 3 + j] = v;
+      });
     });
 
     lineGeometry.setAttribute(
@@ -100,28 +64,50 @@ const useBlockchainData = () => {
       new THREE.BufferAttribute(linePositions, 3),
     );
 
-    return { basePositions, lineGeometry };
-  }, []); // Rerun only if node counts change (they don't)
+    return { basePositions, lineGeometry, connections };
+  }, []);
+};
+
+// This hook is our "Single Source of Truth" for node positions
+const useNodePositions = (basePositions: Float32Array) => {
+  const nodePositionsRef = useRef<THREE.Vector3[]>([]);
+  
+  if (nodePositionsRef.current.length === 0) {
+    for (let i = 0; i < NODE_COUNT; i++) {
+      nodePositionsRef.current.push(
+        new THREE.Vector3().fromArray(basePositions, i * 3)
+      );
+    }
+  }
+
+  useFrame((state) => {
+    const time = state.clock.getElapsedTime();
+    for (let i = 0; i < NODE_COUNT; i++) {
+      if (basePositions[i*3+2] !== undefined) {
+         const zBob = Math.sin(time * 0.5 + i * 0.1) * 0.1;
+         nodePositionsRef.current[i].set(
+           basePositions[i * 3],
+           basePositions[i * 3 + 1],
+           basePositions[i * 3 + 2] + zBob
+         );
+      }
+    }
+  });
+
+  return nodePositionsRef.current;
 };
 
 // --- Component for Nodes (Instanced) ---
-function BlockchainNodes({
-  basePositions,
-}: {
-  basePositions: Float32Array;
-}) {
+function BlockchainNodes({ nodePositions }: { nodePositions: THREE.Vector3[] }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { emissiveIntensity, hoveredNode, selectedNode } = useSceneStore();
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const tempVec = useMemo(() => new THREE.Vector3(), []);
   const tempColor = useMemo(() => new THREE.Color(), []);
-  const nodeCount = basePositions.length / 3;
-
-  useFrame((state) => {
+  
+  useFrame(() => {
     if (!meshRef.current) return;
-    const time = state.clock.getElapsedTime();
 
-    for (let i = 0; i < nodeCount; i++) {
+    for (let i = 0; i < NODE_COUNT; i++) {
       const isHovered = hoveredNode === i;
       const isSelected = selectedNode === i;
       const baseScale = 0.15;
@@ -131,22 +117,17 @@ function BlockchainNodes({
         ? baseScale * 1.3
         : baseScale;
 
-      // Set position with slight bobbing
-      tempVec.fromArray(basePositions, i * 3);
-      // Bobbing is now on Z axis for more 3D feel
-      tempVec.z += Math.sin(time * 0.5 + i * 0.1) * 0.1;
-      dummy.position.copy(tempVec);
+      dummy.position.copy(nodePositions[i]);
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
 
-      // Set color
       if (isSelected) {
-        tempColor.setHSL(0.1, 0.92, 0.5); // Warm amber
+        tempColor.setHSL(0.1, 0.92, 0.5);
       } else if (isHovered) {
-        tempColor.setHSL(0.52, 0.94, 0.67); // Bright cyan
+        tempColor.setHSL(0.52, 0.94, 0.67);
       } else {
-        tempColor.setHSL(0.52, 0.94, 0.57); // Electric cyan
+        tempColor.setHSL(0.52, 0.94, 0.57);
       }
       meshRef.current.setColorAt(i, tempColor);
     }
@@ -160,13 +141,13 @@ function BlockchainNodes({
   return (
     <instancedMesh
       ref={meshRef}
-      args={[undefined, undefined, nodeCount]}
+      args={[undefined, undefined, NODE_COUNT]}
       frustumCulled={false}
     >
       <sphereGeometry args={[1, 16, 16]} />
       <meshStandardMaterial
         emissive="#00d9ff"
-        emissiveIntensity={emissiveIntensity} // Driven by store
+        emissiveIntensity={emissiveIntensity}
         metalness={0.8}
         roughness={0.2}
         toneMapped={false}
@@ -178,17 +159,35 @@ function BlockchainNodes({
 // --- Component for Lines (Performant) ---
 function ConnectionLines({
   lineGeometry,
+  connections,
+  nodePositions,
 }: {
   lineGeometry: THREE.BufferGeometry;
+  connections: [number, number][];
+  nodePositions: THREE.Vector3[];
 }) {
   const materialRef = useRef<THREE.LineBasicMaterial>(null);
   const { linkSpeed } = useSceneStore();
+  const linePositionsAttr = useMemo(
+    () => lineGeometry.attributes.position as THREE.BufferAttribute,
+    [lineGeometry],
+  );
 
   useFrame((state) => {
     if (materialRef.current) {
       materialRef.current.opacity =
         0.3 + Math.sin(state.clock.getElapsedTime() * linkSpeed + 0.5) * 0.2;
     }
+
+    for (let i = 0; i < connections.length; i++) {
+      const [start, end] = connections[i];
+      const startPos = nodePositions[start];
+      const endPos = nodePositions[end];
+
+      linePositionsAttr.setXYZ(i * 2, startPos.x, startPos.y, startPos.z);
+      linePositionsAttr.setXYZ(i * 2 + 1, endPos.x, endPos.y, endPos.z);
+    }
+    linePositionsAttr.needsUpdate = true;
   });
 
   return (
@@ -210,16 +209,14 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
   const { cameraTarget, reducedMotion, meshScale } = useSceneStore();
   const sceneGroupRef = useRef<THREE.Group>(null);
 
-  // Refs for smooth animation
   const targetScale = useRef(1.0);
-  const targetCameraPos = useRef(new THREE.Vector3(0, 0, 15));
   const targetLookAt = useRef(new THREE.Vector3(0, 0, 0));
   const mouseRef = useRef({ x: 0, y: 0 });
+  const targetRotation = useRef(new THREE.Euler(0, 0, 0));
 
-  // Get node data
-  const { basePositions, lineGeometry } = useBlockchainData();
+  const { basePositions, lineGeometry, connections } = useBlockchainData();
+  const nodePositions = useNodePositions(basePositions);
 
-  // Update targets from store
   useEffect(() => {
     targetScale.current = meshScale;
   }, [meshScale]);
@@ -228,7 +225,6 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
     targetLookAt.current.set(...cameraTarget);
   }, [cameraTarget]);
 
-  // Handle mouse movement for tracking
   useEffect(() => {
     if (!mouseTracking) return;
     const handleMouseMove = (event: MouseEvent) => {
@@ -242,9 +238,9 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
   useFrame((state, delta) => {
     if (reducedMotion || !sceneGroupRef.current) return;
 
-    const lerpFactor = 1.0 - Math.exp(-LERP_FACTOR * 60 * delta); // Frame-delta independent lerp
+    const lerpFactor = 1.0 - Math.exp(-LERP_FACTOR * 60 * delta);
 
-    // 1. Animate global mesh scale (for hover/click)
+    // 1. Animate global mesh scale
     sceneGroupRef.current.scale.lerp(
       new THREE.Vector3(
         targetScale.current,
@@ -254,25 +250,41 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
       lerpFactor,
     );
 
-    // 2. Animate Camera
+    // 2. Animate Camera and Scene Rotation
     const isHeroSection = cameraTarget.every((v) => v === 0);
-
-    // --- CHANGE 4: Adjust camera Z position to make sure the new mesh fits ---
-    const cameraZ = 20;
+    // --- CHANGE 3: "Zoom out" camera to see the new wider mesh ---
+    const cameraZ = 22; // Was 18
 
     if (mouseTracking && isHeroSection) {
-      // Mouse tracking in Hero
-      targetCameraPos.current.set(
-        mouseRef.current.x * MOUSE_TRACKING_STRENGTH,
-        mouseRef.current.y * MOUSE_TRACKING_STRENGTH,
-        cameraZ,
+      targetRotation.current.x = mouseRef.current.y * MOUSE_ROTATION_STRENGTH;
+      targetRotation.current.y = mouseRef.current.x * MOUSE_ROTATION_STRENGTH;
+
+      sceneGroupRef.current.rotation.x = THREE.MathUtils.lerp(
+        sceneGroupRef.current.rotation.x,
+        targetRotation.current.x,
+        lerpFactor
       );
-      camera.position.lerp(targetCameraPos.current, lerpFactor);
-      camera.lookAt(targetLookAt.current); // Look at [0,0,0]
+      sceneGroupRef.current.rotation.y = THREE.MathUtils.lerp(
+        sceneGroupRef.current.rotation.y,
+        targetRotation.current.y,
+        lerpFactor
+      );
+      
+      camera.position.lerp(new THREE.Vector3(0, 0, cameraZ), lerpFactor);
+      camera.lookAt(targetLookAt.current);
     } else {
-      // Scroll-based camera movement in Narrative
-      camera.position.lerp(new THREE.Vector3(0, 0, cameraZ), lerpFactor); // Reset camera position
-      camera.lookAt(targetLookAt.current); // Animate lookAt to the target from the store
+      camera.position.lerp(new THREE.Vector3(0, 0, cameraZ), lerpFactor);
+      sceneGroupRef.current.rotation.x = THREE.MathUtils.lerp(
+        sceneGroupRef.current.rotation.x,
+        0, 
+        lerpFactor
+      );
+      sceneGroupRef.current.rotation.y = THREE.MathUtils.lerp(
+        sceneGroupRef.current.rotation.y,
+        0, 
+        lerpFactor
+      );
+      camera.lookAt(targetLookAt.current);
     }
   });
 
@@ -280,8 +292,8 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
     <>
       <PerspectiveCamera
         makeDefault
-        // --- CHANGE 5: Update default camera position ---
-        position={[0, 0, 20]}
+        // --- CHANGE 4: Update camera default position ---
+        position={[0, 0, 22]} 
         fov={60}
         near={0.1}
         far={200}
@@ -292,11 +304,14 @@ function Scene({ mouseTracking = false }: { mouseTracking?: boolean }) {
       <pointLight position={[0, 0, 0]} intensity={1} color="#00d9ff" />
 
       <group ref={sceneGroupRef}>
-        <BlockchainNodes basePositions={basePositions} />
-        <ConnectionLines lineGeometry={lineGeometry} />
+        <BlockchainNodes nodePositions={nodePositions} />
+        <ConnectionLines
+          lineGeometry={lineGeometry}
+          connections={connections}
+          nodePositions={nodePositions}
+        />
       </group>
 
-      {/* Fog plane for depth */}
       <mesh position={[0, 0, -10]} rotation={[0, 0, 0]}>
         <planeGeometry args={[50, 50]} />
         <meshBasicMaterial
@@ -319,7 +334,6 @@ export default function Canvas3D({
   const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Check for reduced motion preference
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     useSceneStore.getState().setReducedMotion(mediaQuery.matches);
 
