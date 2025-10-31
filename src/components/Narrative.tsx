@@ -93,7 +93,7 @@ const sections = [
 
 export default function Narrative() {
   const containerRef = useRef<HTMLDivElement>(null);
-  // --- CHANGE 1: Remove setGlobalScale ---
+  // --- CHANGE 1: Remove setMeshScale ---
   const { setCameraTarget, setLinkSpeed, setEmissiveIntensity } = useSceneStore();
   
   useEffect(() => {
@@ -156,7 +156,7 @@ export default function Narrative() {
     }, containerRef);
     
     return () => ctx.revert();
-  // --- CHANGE 3: Remove setGlobalScale from dependencies ---
+  // --- CHANGE 3: Remove setMeshScale from dependencies ---
   }, [setCameraTarget, setLinkSpeed, setEmissiveIntensity]);
   
   return (
